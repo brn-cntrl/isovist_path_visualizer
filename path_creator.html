@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Path Creator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Courier New', monospace;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        
+        #container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        #controls {
+            background: #333;
+            color: white;
+            padding: 15px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        
+        button.primary {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        button.primary:hover {
+            background: #45a049;
+        }
+        
+        button.secondary {
+            background: #2196F3;
+            color: white;
+        }
+        
+        button.secondary:hover {
+            background: #0b7dda;
+        }
+        
+        button.danger {
+            background: #f44336;
+            color: white;
+        }
+        
+        button.danger:hover {
+            background: #da190b;
+        }
+        
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        
+        input[type="text"] {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: inherit;
+        }
+        
+        #status {
+            background: #f9f9f9;
+            padding: 12px 15px;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        #currentPathInfo {
+            font-weight: bold;
+            color: #2196F3;
+        }
+        
+        #coordinates {
+            color: #666;
+        }
+        
+        #svgContainer {
+            position: relative;
+            overflow: auto;
+            background: #fafafa;
+            min-height: 600px;
+            cursor: crosshair;
+        }
+        
+        #svgDisplay {
+            display: block;
+            margin: 0 auto;
+        }
+        
+        #pathsList {
+            padding: 15px;
+            border-top: 2px solid #ddd;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .path-item {
+            padding: 8px;
+            margin: 5px 0;
+            background: #f0f0f0;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .path-item button {
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+        
+        #overlay {
+            position: absolute;
+            pointer-events: none;
+        }
+        
+        .help {
+            background: #fff3cd;
+            padding: 10px;
+            margin: 10px;
+            border-radius: 4px;
+            border-left: 4px solid #ffc107;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="controls">
+            <input type="file" id="svgInput" accept=".svg" style="display:none">
+            <button onclick="document.getElementById('svgInput').click()" class="secondary">Load Reference SVG</button>
+            <span style="margin: 0 10px;">|</span>
+            <input type="text" id="pathIdInput" placeholder="Path ID" style="width: 150px;">
+            <button onclick="startNewPath()" class="primary">New Path</button>
+            <button onclick="finishPath()" class="secondary" id="finishBtn" disabled>Finish Path</button>
+            <button onclick="undoLastPoint()" class="secondary" id="undoBtn" disabled>Undo Point</button>
+            <button onclick="cancelPath()" class="danger" id="cancelBtn" disabled>Cancel Path</button>
+            <span style="margin: 0 10px;">|</span>
+            <button onclick="exportPaths()" class="primary">Export JSON</button>
+            <button onclick="clearAll()" class="danger">Clear All</button>
+            <span style="margin: 0 10px;">|</span>
+            <label for="zoomSlider">Zoom:</label>
+            <input type="range" id="zoomSlider" min="50" max="300" value="150" step="25" style="width: 150px;">
+            <span id="zoomValue">150%</span>
+        </div>
+        
+        <div id="status">
+            <div>
+                <span>Current Path: </span>
+                <span id="currentPathInfo">None</span>
+                <span style="margin-left: 20px;">Total Paths: </span>
+                <span id="totalPaths">0</span>
+            </div>
+            <div id="coordinates">Move mouse over canvas</div>
+        </div>
+        
+        <div class="help">
+            <strong>Instructions:</strong> Load your reference SVG → Enter a path ID → Click "New Path" → Click on the canvas to add waypoints → Click "Finish Path" → Repeat for more paths → Export JSON
+        </div>
+        
+        <div id="svgContainer">
+            <div style="position: relative; display: inline-block;">
+                <svg id="svgDisplay"></svg>
+                <svg id="overlay" style="position: absolute; top: 0; left: 0; pointer-events: none;"></svg>
+            </div>
+        </div>
+        
+        <div id="pathsList"></div>
+    </div>
+
+    <script>
+        let paths = {};  // {pathId: [{x, y}, ...]}
+        let currentPathId = null;
+        let currentPath = [];
+        let svgData = null;
+        let gridSpacing = 10;
+        let viewBox = {x: 0, y: 0, width: 800, height: 600};
+        let floorplanHeight = 600;  // Actual floorplan height (not padded viewBox)
+        let displayScale = 1.5;  // Current zoom level
+        
+        document.getElementById('zoomSlider').addEventListener('input', function(e) {
+            displayScale = e.target.value / 100;
+            document.getElementById('zoomValue').textContent = e.target.value + '%';
+            updateSVGSize();
+        });
+        
+        document.getElementById('svgInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const parser = new DOMParser();
+                const svgDoc = parser.parseFromString(event.target.result, 'image/svg+xml');
+                const svg = svgDoc.documentElement;
+                
+                const vb = svg.getAttribute('viewBox');
+                    if (vb) {
+                        const parts = vb.split(/\s+/);
+                        viewBox = {
+                            x: parseFloat(parts[0]),
+                            y: parseFloat(parts[1]),
+                            width: parseFloat(parts[2]),
+                            height: parseFloat(parts[3])
+                        };
+                        floorplanHeight = viewBox.height;  // Use viewBox height, not rect detection
+                    }
+                    console.log('Floorplan height:', floorplanHeight);
+                
+                const rects = svgDoc.querySelectorAll('rect[fill="#ffffff"]');
+                let floorplanRect = null;
+                for (let rect of rects) {
+                    const x = parseFloat(rect.getAttribute('x') || 0);
+                    const w = parseFloat(rect.getAttribute('width'));
+                    const h = parseFloat(rect.getAttribute('height'));
+                    if (x >= 0 && w > 100 && h > 100) {
+                        if (!floorplanRect || (w * h > parseFloat(floorplanRect.getAttribute('width')) * parseFloat(floorplanRect.getAttribute('height')))) {
+                            floorplanRect = rect;
+                        }
+                    }
+                }
+                if (floorplanRect) {
+                    floorplanHeight = parseFloat(floorplanRect.getAttribute('height'));
+                }
+                console.log('Floorplan height:', floorplanHeight);
+                
+                const displayScale = 1.5;
+                const display = document.getElementById('svgDisplay');
+                display.innerHTML = svg.innerHTML;
+                display.setAttribute('viewBox', `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
+                display.setAttribute('width', viewBox.width * displayScale);
+                display.setAttribute('height', viewBox.height * displayScale);
+                
+                const overlay = document.getElementById('overlay');
+                overlay.setAttribute('viewBox', `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
+                overlay.setAttribute('width', viewBox.width * displayScale);
+                overlay.setAttribute('height', viewBox.height * displayScale);
+                overlay.style.position = 'absolute';
+                overlay.style.top = '0';
+                overlay.style.left = '0';
+                overlay.style.pointerEvents = 'none';
+                
+                svgData = svg;
+                updateDisplay();
+            };
+            reader.readAsText(file);
+        });
+        
+        function updateSVGSize() {
+            const display = document.getElementById('svgDisplay');
+            const overlay = document.getElementById('overlay');
+            
+            display.setAttribute('width', viewBox.width * displayScale);
+            display.setAttribute('height', viewBox.height * displayScale);
+            overlay.setAttribute('width', viewBox.width * displayScale);
+            overlay.setAttribute('height', viewBox.height * displayScale);
+        }
+        
+        document.getElementById('svgContainer').addEventListener('click', function(e) {
+            if (!currentPathId) {
+                alert('Please start a new path first');
+                return;
+            }
+            
+            const display = document.getElementById('svgDisplay');
+            const rect = display.getBoundingClientRect();
+            const svg_x = ((e.clientX - rect.left) / rect.width) * viewBox.width + viewBox.x;
+            const svg_y = ((e.clientY - rect.top) / rect.height) * viewBox.height + viewBox.y;
+
+            const snappedX = Math.round(svg_x / gridSpacing) * gridSpacing;
+            const snappedSvgY = Math.round(svg_y / gridSpacing) * gridSpacing;
+            const cartesianY = floorplanHeight - snappedSvgY;
+            
+            currentPath.push({x: snappedX, y: cartesianY});
+            updateDisplay();
+            updateButtons();
+        });
+        
+        document.getElementById('svgContainer').addEventListener('mousemove', function(e) {
+            const display = document.getElementById('svgDisplay');
+            const rect = display.getBoundingClientRect();
+            const svg_x = ((e.clientX - rect.left) / rect.width) * viewBox.width + viewBox.x;
+            const svg_y = ((e.clientY - rect.top) / rect.height) * viewBox.height + viewBox.y;
+            const snappedX = Math.round(svg_x / gridSpacing) * gridSpacing;
+            const snappedSvgY = Math.round(svg_y / gridSpacing) * gridSpacing;
+            const cartesianY = floorplanHeight - snappedSvgY;
+            
+            document.getElementById('coordinates').textContent = `(${snappedX.toFixed(1)}, ${cartesianY.toFixed(1)})`;
+        });
+        
+        function startNewPath() {
+            const pathId = document.getElementById('pathIdInput').value.trim();
+            if (!pathId) {
+                alert('Please enter a path ID');
+                return;
+            }
+            
+            if (paths[pathId]) {
+                alert(`Path "${pathId}" already exists`);
+                return;
+            }
+            
+            if (currentPathId) {
+                alert('Please finish the current path first');
+                return;
+            }
+            
+            currentPathId = pathId;
+            currentPath = [];
+            document.getElementById('currentPathInfo').textContent = pathId + ' (in progress)';
+            document.getElementById('currentPathInfo').style.color = '#4CAF50';
+            updateButtons();
+        }
+        
+        function finishPath() {
+            if (!currentPathId) return;
+            
+            if (currentPath.length < 2) {
+                alert('Path needs at least 2 points');
+                return;
+            }
+            
+            paths[currentPathId] = [...currentPath];
+            currentPathId = null;
+            currentPath = [];
+            
+            document.getElementById('currentPathInfo').textContent = 'None';
+            document.getElementById('currentPathInfo').style.color = '#2196F3';
+            document.getElementById('pathIdInput').value = '';
+            
+            updateDisplay();
+            updateButtons();
+            updatePathsList();
+        }
+        
+        function undoLastPoint() {
+            if (currentPath.length > 0) {
+                currentPath.pop();
+                updateDisplay();
+                updateButtons();
+            }
+        }
+        
+        function cancelPath() {
+            currentPathId = null;
+            currentPath = [];
+            document.getElementById('currentPathInfo').textContent = 'None';
+            document.getElementById('currentPathInfo').style.color = '#2196F3';
+            updateDisplay();
+            updateButtons();
+        }
+        
+        function deletePath(pathId) {
+            if (confirm(`Delete path "${pathId}"?`)) {
+                delete paths[pathId];
+                updateDisplay();
+                updatePathsList();
+            }
+        }
+        
+        function clearAll() {
+            if (confirm('Clear all paths?')) {
+                paths = {};
+                currentPathId = null;
+                currentPath = [];
+                document.getElementById('currentPathInfo').textContent = 'None';
+                updateDisplay();
+                updateButtons();
+                updatePathsList();
+            }
+        }
+        
+        function updateDisplay() {
+            const overlay = document.getElementById('overlay');
+            overlay.innerHTML = '';
+            const toSvgY = (cartesianY) => floorplanHeight - cartesianY;
+            
+            for (const [pathId, points] of Object.entries(paths)) {
+                for (let i = 0; i < points.length - 1; i++) {
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', points[i].x);
+                    line.setAttribute('y1', toSvgY(points[i].y));
+                    line.setAttribute('x2', points[i + 1].x);
+                    line.setAttribute('y2', toSvgY(points[i + 1].y));
+                    line.setAttribute('stroke', 'blue');
+                    line.setAttribute('stroke-width', '3');
+                    line.setAttribute('marker-end', 'url(#arrowBlue)');
+                    overlay.appendChild(line);
+                }
+        
+                points.forEach((p, idx) => {
+                    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                    circle.setAttribute('cx', p.x);
+                    circle.setAttribute('cy', toSvgY(p.y));
+                    circle.setAttribute('r', '5');
+                    circle.setAttribute('fill', 'blue');
+                    circle.setAttribute('stroke', 'white');
+                    circle.setAttribute('stroke-width', '2');
+                    overlay.appendChild(circle);
+                });
+                
+                if (points.length > 0) {
+                    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    text.setAttribute('x', points[0].x);
+                    text.setAttribute('y', toSvgY(points[0].y) - 10);
+                    text.setAttribute('fill', 'blue');
+                    text.setAttribute('font-size', '14');
+                    text.setAttribute('font-weight', 'bold');
+                    text.setAttribute('text-anchor', 'middle');
+                    text.textContent = pathId;
+                    overlay.appendChild(text);
+                }
+            }
+            
+            if (currentPath.length > 0) {
+                for (let i = 0; i < currentPath.length - 1; i++) {
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', currentPath[i].x);
+                    line.setAttribute('y1', toSvgY(currentPath[i].y));
+                    line.setAttribute('x2', currentPath[i + 1].x);
+                    line.setAttribute('y2', toSvgY(currentPath[i + 1].y));
+                    line.setAttribute('stroke', 'lime');
+                    line.setAttribute('stroke-width', '4');
+                    line.setAttribute('marker-end', 'url(#arrowGreen)');
+                    overlay.appendChild(line);
+                }
+                
+                currentPath.forEach((p, idx) => {
+                    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                    circle.setAttribute('cx', p.x);
+                    circle.setAttribute('cy', toSvgY(p.y));
+                    circle.setAttribute('r', '5');
+                    circle.setAttribute('fill', 'lime');
+                    circle.setAttribute('stroke', 'darkgreen');
+                    circle.setAttribute('stroke-width', '2');
+                    overlay.appendChild(circle);
+                });
+            }
+            
+            const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+            
+            const markerBlue = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+            markerBlue.setAttribute('id', 'arrowBlue');
+            markerBlue.setAttribute('markerWidth', '10');
+            markerBlue.setAttribute('markerHeight', '10');
+            markerBlue.setAttribute('refX', '9');
+            markerBlue.setAttribute('refY', '3');
+            markerBlue.setAttribute('orient', 'auto');
+            const pathBlue = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            pathBlue.setAttribute('d', 'M0,0 L0,6 L9,3 z');
+            pathBlue.setAttribute('fill', 'blue');
+            markerBlue.appendChild(pathBlue);
+            defs.appendChild(markerBlue);
+            
+            const markerGreen = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+            markerGreen.setAttribute('id', 'arrowGreen');
+            markerGreen.setAttribute('markerWidth', '10');
+            markerGreen.setAttribute('markerHeight', '10');
+            markerGreen.setAttribute('refX', '9');
+            markerGreen.setAttribute('refY', '3');
+            markerGreen.setAttribute('orient', 'auto');
+            const pathGreen = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            pathGreen.setAttribute('d', 'M0,0 L0,6 L9,3 z');
+            pathGreen.setAttribute('fill', 'lime');
+            markerGreen.appendChild(pathGreen);
+            defs.appendChild(markerGreen);
+            
+            overlay.appendChild(defs);
+        }
+        
+        function updateButtons() {
+            document.getElementById('finishBtn').disabled = !currentPathId || currentPath.length < 2;
+            document.getElementById('undoBtn').disabled = !currentPathId || currentPath.length === 0;
+            document.getElementById('cancelBtn').disabled = !currentPathId;
+        }
+        
+        function updatePathsList() {
+            const list = document.getElementById('pathsList');
+            const pathCount = Object.keys(paths).length;
+            document.getElementById('totalPaths').textContent = pathCount;
+            
+            if (pathCount === 0) {
+                list.innerHTML = '<div style="padding:10px;color:#999;">No paths created yet</div>';
+                return;
+            }
+            
+            list.innerHTML = '<h3 style="margin-bottom:10px;">Saved Paths:</h3>';
+            for (const [pathId, points] of Object.entries(paths)) {
+                const item = document.createElement('div');
+                item.className = 'path-item';
+                item.innerHTML = `
+                    <span><strong>${pathId}</strong> (${points.length} points)</span>
+                    <button class="danger" onclick="deletePath('${pathId}')">Delete</button>
+                `;
+                list.appendChild(item);
+            }
+        }
+        
+        function exportPaths() {
+            if (Object.keys(paths).length === 0) {
+                alert('No paths to export');
+                return;
+            }
+            
+            const features = [];
+            for (const [pathId, points] of Object.entries(paths)) {
+                features.push({
+                    type: "Feature",
+                    properties: {
+                        id: pathId,
+                        type: "trajectory",
+                        point_count: points.length
+                    },
+                    geometry: {
+                        type: "LineString",
+                        coordinates: points.map(p => [p.x, p.y])
+                    }
+                });
+            }
+            
+            const output = {
+                type: "FeatureCollection",
+                metadata: {
+                    source: "Path Creator (Browser)",
+                    created: new Date().toISOString(),
+                    dimensions: viewBox
+                },
+                features: features
+            };
+            
+            const json = JSON.stringify(output, null, 2);
+            const blob = new Blob([json], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'paths.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        updateButtons();
+        updatePathsList();
+    </script>
+</body>
+</html>
