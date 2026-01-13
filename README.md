@@ -2,6 +2,13 @@
 
 Generate visibility polygon (isovist) visualizations along pedestrian paths through architectural floorplans.
 
+## Examples
+
+### Input floorplan with reference grid
+![Reference Grid](images/floorplan_cleaned_reference.svg)
+
+### Output: Isovist visualization
+![Isovist Example](images/path1_point_002.svg)
 ## Overview
 
 This toolkit processes SVG floorplans and creates sequences of images showing what's visible from each point along a path. Perfect for analyzing wayfinding, spatial perception, and architectural visibility in buildings.
