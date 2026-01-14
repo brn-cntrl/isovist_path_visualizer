@@ -1,0 +1,537 @@
+{
+  "type": "FeatureCollection",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "urn:ogc:def:crs:EPSG::0"
+    }
+  },
+  "metadata": {
+    "viewBox": {
+      "x": 0.0,
+      "y": 0.0,
+      "width": 675.59,
+      "height": 307.14
+    },
+    "units": "pixels",
+    "coordinate_system": "top-left origin, +x right, +y down"
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "id": 0,
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              675.59,
+              307.14
+            ],
+            [
+              0.0,
+              307.14
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              675.59,
+              0.0
+            ],
+            [
+              675.59,
+              307.14
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "obstacle_id": 0,
+        "group": "boundary",
+        "point_count": 4
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 1,
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              134.26,
+              113.16
+            ],
+            [
+              89.67999999999999,
+              113.16
+            ],
+            [
+              89.67999999999999,
+              69.15
+            ],
+            [
+              134.26,
+              69.15
+            ],
+            [
+              134.26,
+              113.16
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "obstacle_id": 1,
+        "group": "objects",
+        "point_count": 4
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 2,
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              255.58,
+              35.37
+            ],
+            [
+              199.94,
+              35.37
+            ],
+            [
+              199.94,
+              4.44
+            ],
+            [
+              255.57999999999998,
+              4.44
+            ],
+            [
+              255.57999999999998,
+              35.37
+            ],
+            [
+              255.58,
+              35.37
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "obstacle_id": 2,
+        "group": "objects",
+        "point_count": 5
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 3,
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              390.26,
+              29.58
+            ],
+            [
+              335.05,
+              29.58
+            ],
+            [
+              335.05,
+              5.11
+            ],
+            [
+              390.26,
+              5.11
+            ],
+            [
+              390.26,
+              29.58
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "obstacle_id": 3,
+        "group": "objects",
+        "point_count": 4
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4,
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              497.27,
+              30.72
+            ],
+            [
+              433.72999999999996,
+              30.72
+            ],
+            [
+              433.72999999999996,
+              4.64
+            ],
+            [
+              497.27,
+              4.64
+            ],
+            [
+              497.27,
+              30.72
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "obstacle_id": 4,
+        "group": "objects",
+        "point_count": 4
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 5,
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              554.69,
+              131.79
+            ],
+            [
+              515.6700000000001,
+              131.79
+            ],
+            [
+              515.6700000000001,
+              92.76999999999998
+            ],
+            [
+              554.69,
+              92.76999999999998
+            ],
+            [
+              554.69,
+              131.79
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "obstacle_id": 5,
+        "group": "objects",
+        "point_count": 4
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 6,
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              671.04,
+              175.3
+            ],
+            [
+              644.13,
+              175.3
+            ],
+            [
+              644.13,
+              125.03
+            ],
+            [
+              671.04,
+              125.03
+            ],
+            [
+              671.04,
+              175.3
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "obstacle_id": 6,
+        "group": "objects",
+        "point_count": 4
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 7,
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              246.32,
+              200.36
+            ],
+            [
+              197.23,
+              200.36
+            ],
+            [
+              197.23,
+              151.27
+            ],
+            [
+              246.32,
+              151.27
+            ],
+            [
+              246.32,
+              200.36
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "obstacle_id": 7,
+        "group": "objects",
+        "point_count": 4
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 8,
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              436.34,
+              177.02
+            ],
+            [
+              386.21,
+              177.02
+            ],
+            [
+              386.21,
+              129.01000000000002
+            ],
+            [
+              436.34,
+              129.01000000000002
+            ],
+            [
+              436.34,
+              177.02
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "obstacle_id": 8,
+        "group": "objects",
+        "point_count": 4
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 9,
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              674.74,
+              302.57
+            ],
+            [
+              573.62,
+              302.57
+            ],
+            [
+              573.62,
+              204.44
+            ],
+            [
+              674.74,
+              204.44
+            ],
+            [
+              674.74,
+              302.57
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "obstacle_id": 9,
+        "group": "objects",
+        "point_count": 4
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 10,
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              574.69,
+              302.55
+            ],
+            [
+              548.75,
+              302.55
+            ],
+            [
+              548.75,
+              274.91
+            ],
+            [
+              574.69,
+              274.91
+            ],
+            [
+              574.69,
+              302.55
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "obstacle_id": 10,
+        "group": "objects",
+        "point_count": 4
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 11,
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              474.93,
+              306.22
+            ],
+            [
+              441.46000000000004,
+              306.22
+            ],
+            [
+              441.46000000000004,
+              287.15000000000003
+            ],
+            [
+              474.93000000000006,
+              287.15000000000003
+            ],
+            [
+              474.93000000000006,
+              306.22
+            ],
+            [
+              474.93,
+              306.22
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "obstacle_id": 11,
+        "group": "objects",
+        "point_count": 5
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 12,
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              372.62,
+              300.95
+            ],
+            [
+              298.11,
+              300.95
+            ],
+            [
+              298.11,
+              275.66999999999996
+            ],
+            [
+              372.62,
+              275.66999999999996
+            ],
+            [
+              372.62,
+              300.94999999999993
+            ],
+            [
+              372.62,
+              300.95
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "obstacle_id": 12,
+        "group": "objects",
+        "point_count": 5
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 13,
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              117.56,
+              306.49
+            ],
+            [
+              62.21,
+              306.49
+            ],
+            [
+              62.21,
+              281.92
+            ],
+            [
+              117.56,
+              281.92
+            ],
+            [
+              117.56,
+              306.49
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "obstacle_id": 13,
+        "group": "objects",
+        "point_count": 4
+      }
+    }
+  ]
+}
