@@ -1,0 +1,64 @@
+{
+  "type": "FeatureCollection",
+  "metadata": {
+    "source": "Path Creator (Browser)",
+    "created": "2026-01-13T20:37:40.358Z",
+    "dimensions": {
+      "x": -30,
+      "y": 0,
+      "width": 705.59,
+      "height": 337.14
+    }
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "path1",
+        "type": "trajectory",
+        "point_count": 9
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            70,
+            67.13999999999999
+          ],
+          [
+            200,
+            67.13999999999999
+          ],
+          [
+            330,
+            67.13999999999999
+          ],
+          [
+            450,
+            77.13999999999999
+          ],
+          [
+            490,
+            137.14
+          ],
+          [
+            480,
+            207.14
+          ],
+          [
+            510,
+            237.14
+          ],
+          [
+            560,
+            247.14
+          ],
+          [
+            620,
+            247.14
+          ]
+        ]
+      }
+    }
+  ]
+}
