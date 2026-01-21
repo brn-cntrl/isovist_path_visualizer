@@ -1,0 +1,42 @@
+{
+"obstacle1": {
+        "visibility": 0.4
+    },
+"obstacle2": {
+        "visibility": 0.45
+    },
+"obstacle3": {
+        "visibility": 0.90
+    },
+"obstacle4": {
+        "visibility": 0.60
+    },
+"obstacle5": {
+        "visibility": 0.55
+    },
+"obstacle6": {
+        "visibility": 0.45
+    },
+"obstacle7": {
+        "visibility": 0.20
+    },
+"obstacle8": {
+        "visibility": 0.60
+    },
+"obstacle9": {
+        "visibility": 0.60
+    },
+"obstacle10": {
+        "visibility": 0.75
+    },
+"obstacle11": {
+        "visibility": 0.45
+    },
+"obstacle12": {
+        "visibility": 0.90
+    },
+"obstacle13": {
+        "visibility": 0.60
+    }
+}
+    
