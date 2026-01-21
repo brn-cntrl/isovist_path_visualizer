@@ -40,7 +40,6 @@ Plus the Python wrapper: `visibility_module.py`
 ## Quick Start
 
 ### Complete Workflow
-
 ```bash
 # 1. Convert SVG floorplan to GeoJSON
 python svg_to_json.py floorplan.svg floorplan.geojson
@@ -51,8 +50,11 @@ python generate_reference_grid.py floorplan.geojson reference.svg
 # 3. Create paths (open in browser)
 # Open path_creator.html → Load reference.svg → Create paths → Export paths.json
 
-# 4. Generate isovist visualizations
+# 4a. Generate basic isovist visualizations
 python path_visualizer.py floorplan.geojson paths.json --format both --output-dir ./output
+
+# 4b. OR generate with allocentric mode (obstacle-centered visibility)
+python path_visualizer.py floorplan.geojson -a visibility_values.json paths.json -o 1 --format both --output-dir ./output
 ```
 
 ## Detailed Workflow
@@ -128,7 +130,6 @@ Use the interactive browser tool to create pedestrian paths:
 ### Step 4: Generate Visualizations
 
 Generate isovist visualizations along your paths:
-
 ```bash
 # Basic usage (SVG output)
 python path_visualizer.py floorplan.geojson paths.json
@@ -144,17 +145,69 @@ python path_visualizer.py floorplan.geojson paths.json --output-dir ./my_renders
 
 # Specific path only
 python path_visualizer.py floorplan.geojson paths.json --path-id path1
+
+# Allocentric mode - show visibility from an obstacle with clipped radius
+python path_visualizer.py floorplan.geojson -a visibility_values.json paths.json -o 1
 ```
 
 **Output:** For each point in the path:
 - Floorplan with obstacles (gray polygons)
-- Visibility polygon/isovist (light gray fill)
+- Visibility polygon/isovist from path viewpoint (light gray fill)
+- **Allocentric mode only:** Clipped visibility polygon from obstacle center (medium gray fill)
+- **Allocentric mode only:** Obstacle center marker (black circle)
 - Complete path line (gray)
 - Past waypoints (medium gray circles)
 - Current viewpoint (black circle, larger)
 - Future waypoints (light gray circles)
 
 **File naming:** `{path_id}_point_{index}.svg` (e.g., `path1_point_000.svg`, `path1_point_001.svg`, ...)
+
+### Allocentric Mode
+
+Allocentric mode adds a second isovist centered on a selected obstacle, clipped by a visibility radius. This shows what is visible *from* the obstacle itself, useful for analyzing object prominence and visual influence.
+
+**Create a visibility values file** (`visibility_values.json`):
+```json
+{
+  "obstacle1": {
+    "visibility": 0.75
+  },
+  "obstacle2": {
+    "visibility": 0.45
+  },
+  "obstacle3": {
+    "visibility": 0.90
+  }
+}
+```
+
+**Visibility values:**
+- Range: 0.0 to 1.0 (normalized)
+- 0.0 = no visibility radius
+- 1.0 = visibility radius equals the diagonal of the boundary
+- Intermediate values scale proportionally
+
+**Identify obstacle numbers:**
+Use the reference grid generator with obstacle numbering to identify which obstacle is which:
+```bash
+python generate_reference_grid.py floorplan.geojson reference.svg
+```
+Open `reference.svg` in a browser - each obstacle will be labeled with its index number.
+
+**Run with allocentric mode:**
+```bash
+# Generate visualizations with allocentric isovist for obstacle 1
+python path_visualizer.py floorplan.geojson -a visibility_values.json paths.json -o 1
+
+# With custom output directory
+python path_visualizer.py floorplan.geojson -a visibility_values.json paths.json -o 5 --output-dir ./allocentric_output
+```
+
+**Visual output in allocentric mode:**
+- **Light gray polygon:** Visibility from path viewpoint (unclipped)
+- **Medium gray polygon:** Visibility from obstacle center (clipped by radius)
+- **Black center marker:** Center of the selected obstacle
+- Both isovists overlap with transparency for comparison
 
 ## Command Reference
 
@@ -177,12 +230,16 @@ Creates reference grid SVG with coordinate labels.
 
 ### path_visualizer.py
 ```bash
-python path_visualizer.py FLOORPLAN.geojson PATHS.json [OPTIONS]
+python path_visualizer.py FLOORPLAN.geojson [-a VISIBILITY_VALUES] PATHS.json [-o OBSTACLE_INDEX] [OPTIONS]
 ```
 
 **Arguments:**
 - `FLOORPLAN.geojson` - Floorplan GeoJSON file
 - `PATHS.json` - Paths JSON file from path_creator.html
+
+**Allocentric Mode Arguments:**
+- `-a, --allocentric VISIBILITY_VALUES` - Enable allocentric mode with visibility values JSON file
+- `-o, --obstacle OBSTACLE_INDEX` - Obstacle index (required when using `-a`)
 
 **Options:**
 - `--path-id ID` - Process specific path only (default: all paths)
@@ -199,6 +256,12 @@ python path_visualizer.py floorplan.geojson paths.json --path-id path1 --format 
 
 # All paths, both formats, custom directory
 python path_visualizer.py floorplan.geojson paths.json --format both --output-dir ./renders
+
+# Allocentric mode with obstacle 1
+python path_visualizer.py floorplan.geojson -a visibility_values.json paths.json -o 1
+
+# Allocentric mode with specific path and PNG output
+python path_visualizer.py floorplan.geojson -a visibility_values.json paths.json -o 3 --path-id path1 --format png
 ```
 
 ## File Formats
@@ -254,6 +317,28 @@ Standard SVG file with:
 ### Output: Isovist Visualizations
 - **SVG:** Vector graphics, scalable, editable
 - **PNG:** Raster images at 150 DPI, ready for publication
+
+### Visibility Values JSON (for Allocentric Mode)
+```json
+{
+  "obstacle1": {
+    "visibility": 0.75
+  },
+  "obstacle2": {
+    "visibility": 0.45
+  },
+  "obstacle3": {
+    "visibility": 0.90
+  }
+}
+```
+
+**Structure:**
+- Keys: `"obstacle1"`, `"obstacle2"`, etc. (matching obstacle indices from floorplan)
+- `visibility`: Float value from 0.0 to 1.0
+  - 0.0 = no visibility radius
+  - 1.0 = radius equals boundary diagonal
+  - Values scale linearly between these extremes
 
 ## Creating Animations (Optional)
 
@@ -320,11 +405,15 @@ The visualizer uses grayscale colors suitable for publication:
 |---------|-------|
 | Boundary | Dark gray dashed line |
 | Obstacles | Light gray fill, dark outline |
-| Isovist | Light gray fill with transparency |
+| Path viewpoint isovist | Light gray fill with transparency |
+| Allocentric isovist (clipped) | Medium gray fill with transparency |
+| Obstacle center marker | Black circle with white outline |
 | Path line | Medium gray |
 | Current point | Black (emphasized) |
 | Past points | Medium gray |
 | Future points | Light gray |
+
+**Note:** In allocentric mode, both isovists are drawn with transparency so they can be visually compared where they overlap.
 
 ## Performance
 
