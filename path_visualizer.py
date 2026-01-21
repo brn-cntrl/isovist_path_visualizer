@@ -25,7 +25,6 @@ except ImportError:
     print("Error: svgwrite not installed. Install with: pip install svgwrite")
     sys.exit(1)
 
-# Try to load visibility module - support both loading methods
 _visibility_module = None
 try:
     from visibility_module import get_visibility_module
@@ -72,13 +71,11 @@ class IsovistPathVisualizer:
         if self.vis_module is None:
             raise RuntimeError("Visibility module not loaded. Check installation.")
         
-        # Extract floorplan metadata
         metadata = self.floorplan_data.get('metadata', {})
         self.viewbox = metadata.get('viewBox', {})
         self.width = self.viewbox.get('width', 800)
         self.height = self.viewbox.get('height', 600)
         
-        # Extract obstacles from floorplan
         self.obstacles = self._extract_obstacles()
 
         print("\nDiagnostic - Polygon winding order:")
@@ -87,7 +84,6 @@ class IsovistPathVisualizer:
             winding = self._check_polygon_winding(obs_cartesian)
             print(f"  Obstacle {i}: {winding} ({len(obs)} points)")
 
-        # Merge obstacles too close to boundaries
         self.obstacles = self._merge_boundary_adjacent_obstacles(tolerance=2.0)
 
         print(f"✓ Loaded floorplan: {self.width:.1f} x {self.height:.1f}")
@@ -96,7 +92,6 @@ class IsovistPathVisualizer:
         self.boundary_diagonal = self._calculate_boundary_diagonal()
         print(f"✓ Boundary diagonal: {self.boundary_diagonal:.1f}px")
 
-        # Initialize allocentric mode parameters (will be set by generate_sequence)
         self.allocentric_mode = False
         self.visibility_data = None
         self.target_obstacle = None
@@ -106,7 +101,6 @@ class IsovistPathVisualizer:
         Check if polygon has clockwise or counter-clockwise winding
         Returns: 'cw' for clockwise, 'ccw' for counter-clockwise
         """
-        # Calculate signed area
         area = 0.0
         for i in range(len(points)):
             j = (i + 1) % len(points)
@@ -126,9 +120,11 @@ class IsovistPathVisualizer:
         for feature in self.floorplan_data.get('features', []):
             if feature.get('properties', {}).get('type') in ['boundary', 'obstacle']:
                 coords = feature['geometry']['coordinates'][0]
-                # Convert Cartesian (bottom-left origin) to SVG (top-left origin)
-                svg_coords = [(x, self.height - y) for x, y in coords]
-                obstacles.append(svg_coords)
+                # Keep in Cartesian coordinates (same as paths)
+                # Remove duplicate closing point if present
+                if len(coords) > 1 and coords[0] == coords[-1]:
+                    coords = coords[:-1]
+                obstacles.append(coords)
         return obstacles
     
     def _compute_visibility(self, viewpoint: Tuple[float, float]) -> List[Tuple[float, float]]:
@@ -142,23 +138,17 @@ class IsovistPathVisualizer:
             List of (x, y) points defining visibility polygon in SVG coordinates
         """
         try:
-            # Convert viewpoint from Cartesian to format expected by module
             vp_cartesian = (viewpoint[0], viewpoint[1])
             
-            # Create Point object
             pov = self.vis_module.module.Point(float(vp_cartesian[0]), float(vp_cartesian[1]))
             
-            # Create obstacle polygons
             obstacle_list = []
             for obstacle_points in self.obstacles:
                 poly = self.vis_module.module.Polygon2()
-                # Convert back from SVG to Cartesian for C++ module
-                for x, svg_y in obstacle_points:
-                    cartesian_y = self.height - svg_y
-                    poly.add_vertex(float(x), float(cartesian_y))
+                for x, y in obstacle_points:
+                    poly.add_vertex(float(x), float(y))
                 obstacle_list.append(poly)
             
-            # Compute visibility polygon
             visibility_points = self.vis_module.module.compute_visibility_polygon(
                 pov,
                 obstacle_list,
@@ -167,7 +157,6 @@ class IsovistPathVisualizer:
                 3000.0  # ray_length
             )
             
-            # Convert result from Cartesian to SVG coordinates
             return [(p.x, self.height - p.y) for p in visibility_points]
             
         except Exception as e:
@@ -191,11 +180,7 @@ class IsovistPathVisualizer:
             List of (x, y) points defining clipped visibility polygon in SVG coordinates
         """
         try:
-            # Get the obstacle polygon (stored in SVG coordinates)
-            obstacle_svg = self.obstacles[obstacle_index]
-            
-            # Convert from SVG to Cartesian coordinates
-            obstacle_cartesian = [(x, self.height - y) for x, y in obstacle_svg]
+            obstacle_cartesian = self.obstacles[obstacle_index]
             
             # Calculate obstacle center (in Cartesian coordinates)
             # Exclude duplicate closing point if present
@@ -211,11 +196,8 @@ class IsovistPathVisualizer:
             
             print(f"  Allocentric center (Cartesian): ({center_x:.1f}, {center_y:.1f})")
             
-            # Create Point for the center
             pov = self.vis_module.module.Point(float(center_x), float(center_y))
             
-            # Create obstacle polygons EXCLUDING the target obstacle
-            # Need to convert from SVG to Cartesian for C++ module
             obstacle_list = []
             for i, obstacle_points in enumerate(self.obstacles):
                 if i == obstacle_index:
@@ -223,15 +205,12 @@ class IsovistPathVisualizer:
                     continue  # Skip the target obstacle
                     
                 poly = self.vis_module.module.Polygon2()
-                # Convert back from SVG to Cartesian for C++ module
-                for x, svg_y in obstacle_points:
-                    cartesian_y = self.height - svg_y
-                    poly.add_vertex(float(x), float(cartesian_y))
+                for x, y in obstacle_points:
+                    poly.add_vertex(float(x), float(y))
                 obstacle_list.append(poly)
             
             print(f"  Computing with {len(obstacle_list)} obstacles (excluded obstacle {obstacle_index})")
             
-            # Compute visibility polygon (returns Point objects)
             visibility_points = self.vis_module.module.compute_visibility_polygon(
                 pov,
                 obstacle_list,
@@ -242,20 +221,17 @@ class IsovistPathVisualizer:
             
             print(f"  Unclipped allocentric polygon: {len(visibility_points)} points")
             
-            # Calculate radius: 0 = 0, 1 = boundary diagonal
             radius = visibility_value * self.boundary_diagonal
             
             print(f"  Visibility value: {visibility_value:.2f}")
             print(f"  Boundary diagonal: {self.boundary_diagonal:.1f}px")
             print(f"  Clipping radius: {radius:.1f}px")
             
-            # Clip with circle using Clipper2
-            # Pass Point objects (not tuples!)
             clipped_points = self.vis_module.module.clip_circle_with_visibility_polygon(
-                visibility_points,  # Point objects from compute_visibility_polygon
-                pov,                # Point object for center
+                visibility_points,  
+                pov,                
                 float(radius),
-                128  # circle segments for smooth clipping
+                128  
             )
             
             print(f"  Clipped allocentric polygon: {len(clipped_points)} points")
@@ -264,7 +240,6 @@ class IsovistPathVisualizer:
                 print(f"  ✗ WARNING: Clipping returned empty polygon!")
                 return []
             
-            # Convert from Cartesian to SVG coordinates
             result = [(p.x, self.height - p.y) for p in clipped_points]
             
             print(f"  ✓ Allocentric visibility computed successfully")
@@ -294,18 +269,16 @@ class IsovistPathVisualizer:
         boundary = self.obstacles[0]
         boundary_cartesian = [(x, self.height - y) for x, y in boundary]
         
-        # Get boundary extents
         min_x = min(x for x, y in boundary_cartesian)
         max_x = max(x for x, y in boundary_cartesian)
         min_y = min(y for x, y in boundary_cartesian)
         max_y = max(y for x, y in boundary_cartesian)
         
-        modified_obstacles = [boundary]  # Keep original boundary
+        modified_obstacles = [boundary] 
         
         for i, obstacle in enumerate(self.obstacles[1:], start=1):
             obstacle_cartesian = [(x, self.height - y) for x, y in obstacle]
             
-            # Check if any vertex is too close to boundary edges
             too_close = False
             for x, y in obstacle_cartesian:
                 if (abs(x - min_x) < tolerance or abs(x - max_x) < tolerance or
@@ -315,13 +288,11 @@ class IsovistPathVisualizer:
                     break
             
             if too_close:
-                # Adjust obstacle vertices to be exactly on boundary or further away
                 adjusted = []
                 for x, y in obstacle_cartesian:
                     new_x = x
                     new_y = y
                     
-                    # Snap to boundary if within tolerance
                     if abs(x - min_x) < tolerance:
                         new_x = min_x
                     if abs(x - max_x) < tolerance:
@@ -344,17 +315,15 @@ class IsovistPathVisualizer:
     def _calculate_boundary_diagonal(self) -> float:
         """Calculate the diagonal of the boundary polygon (first obstacle)"""
         if not self.obstacles or len(self.obstacles) < 1:
-            return 1000.0  # Default fallback
+            return 1000.0  
         
         boundary = self.obstacles[0]
-        
-        # Find min/max coordinates
+   
         min_x = min(x for x, y in boundary)
         max_x = max(x for x, y in boundary)
         min_y = min(y for x, y in boundary)
         max_y = max(y for x, y in boundary)
         
-        # Calculate diagonal
         width = max_x - min_x
         height = max_y - min_y
         diagonal = (width**2 + height**2)**0.5
@@ -381,27 +350,23 @@ class IsovistPathVisualizer:
         Returns:
             svgwrite.Drawing object
         """
-        # Convert Cartesian viewpoint to SVG
         vp_svg = (viewpoint[0], self.height - viewpoint[1])
         
-        # Create SVG with padding for labels
         dwg = svgwrite.Drawing(
             size=(f"{self.width}px", f"{self.height}px"),
             viewBox=f"0 0 {self.width} {self.height}"
         )
         
-        # Add background
         dwg.add(dwg.rect(
             insert=(0, 0),
             size=(self.width, self.height),
             fill='white'
         ))
         
-        # Draw floorplan boundary and obstacles
         for i, obstacle in enumerate(self.obstacles):
-            points = [(x, y) for x, y in obstacle]
+            points = [(x, self.height - y) for x, y in obstacle]
             
-            if i == 0:  # Boundary
+            if i == 0:  
                 dwg.add(dwg.polygon(
                     points=points,
                     fill='none',
@@ -409,7 +374,7 @@ class IsovistPathVisualizer:
                     stroke_width=2,
                     stroke_dasharray='5,5'
                 ))
-            else:  # Obstacles
+            else:  
                 dwg.add(dwg.polygon(
                     points=points,
                     fill='#e0e0e0',
@@ -417,8 +382,6 @@ class IsovistPathVisualizer:
                     stroke_width=2
                 ))
         
-        # Draw allocentric visibility polygon FIRST (if in allocentric mode)
-        # This is the clipped isovist from the obstacle center
         if allocentric_polygon and len(allocentric_polygon) > 0:
             dwg.add(dwg.polygon(
                 points=allocentric_polygon,
@@ -429,10 +392,7 @@ class IsovistPathVisualizer:
                 stroke_width=2
             ))
             
-            # Draw obstacle center indicator
-            obstacle_svg = self.obstacles[self.target_obstacle]
-            # Convert to Cartesian for center calculation
-            obstacle_cartesian = [(x, self.height - y) for x, y in obstacle_svg]
+            obstacle_cartesian = self.obstacles[self.target_obstacle]
             points_to_average = obstacle_cartesian
             if len(obstacle_cartesian) > 1:
                 first = obstacle_cartesian[0]
@@ -442,11 +402,10 @@ class IsovistPathVisualizer:
             
             center_x = sum(x for x, y in points_to_average) / len(points_to_average)
             center_y = sum(y for x, y in points_to_average) / len(points_to_average)
-            # Convert center back to SVG for drawing
+          
             center_svg_x = center_x
             center_svg_y = self.height - center_y
             
-            # Draw obstacle center marker
             dwg.add(dwg.circle(
                 center=(center_svg_x, center_svg_y),
                 r=6,
@@ -455,8 +414,6 @@ class IsovistPathVisualizer:
                 stroke_width=2
             ))
 
-        # Draw visibility polygon (isovist from path POV)
-        # This is the unclipped isovist from the current viewpoint
         if visibility_polygon:
             dwg.add(dwg.polygon(
                 points=visibility_polygon,
@@ -467,10 +424,8 @@ class IsovistPathVisualizer:
                 stroke_width=2
             ))
         
-        # Draw complete path
         path_svg_coords = [(x, self.height - y) for x, y in path_coords]
         
-        # Draw path lines
         for i in range(len(path_svg_coords) - 1):
             dwg.add(dwg.line(
                 start=path_svg_coords[i],
@@ -480,10 +435,8 @@ class IsovistPathVisualizer:
                 opacity=0.6
             ))
         
-        # Draw path points
         for i, (x, y) in enumerate(path_svg_coords):
             if i == current_point_idx:
-                # Current viewpoint - larger, highlighted
                 dwg.add(dwg.circle(
                     center=(x, y),
                     r=8,
@@ -492,7 +445,6 @@ class IsovistPathVisualizer:
                     stroke_width=3
                 ))
             elif i < current_point_idx:
-                # Past points
                 dwg.add(dwg.circle(
                     center=(x, y),
                     r=5,
@@ -501,7 +453,6 @@ class IsovistPathVisualizer:
                     stroke_width=2
                 ))
             else:
-                # Future points
                 dwg.add(dwg.circle(
                     center=(x, y),
                     r=5,
@@ -509,26 +460,6 @@ class IsovistPathVisualizer:
                     stroke='white',
                     stroke_width=2
                 ))
-        
-        # Add labels
-        # title_text = f"Path: {path_id} | Point {current_point_idx + 1}/{len(path_coords)}"
-        # dwg.add(dwg.text(
-        #     title_text,
-        #     insert=(10, 20),
-        #     fill='#333333',
-        #     font_size='16px',
-        #     font_family='Arial, sans-serif',
-        #     font_weight='bold'
-        # ))
-        
-        # coord_text = f"Position: ({viewpoint[0]:.1f}, {viewpoint[1]:.1f})"
-        # dwg.add(dwg.text(
-        #     coord_text,
-        #     insert=(10, 40),
-        #     fill='#666666',
-        #     font_size='14px',
-        #     font_family='Arial, sans-serif'
-        # ))
         
         return dwg
     
@@ -551,7 +482,6 @@ class IsovistPathVisualizer:
             List of generated file paths
         """
 
-        # Update allocentric mode parameters
         self.allocentric_mode = allocentric_mode
         self.visibility_data = visibility_data
         self.target_obstacle = target_obstacle
@@ -579,16 +509,13 @@ class IsovistPathVisualizer:
             
             print(f"\nProcessing path '{current_path_id}' with {len(coords)} points...")
             
-            # Generate image for each point
             for idx, (x, y) in enumerate(coords):
                 viewpoint = (x, y)
                 
                 print(f"  Point {idx + 1}/{len(coords)}: ({x:.1f}, {y:.1f})...", end=" ")
                 
-                # Compute visibility polygon from path POV
                 visibility = self._compute_visibility(viewpoint)
                 
-                # Compute allocentric visibility if in allocentric mode
                 allocentric_visibility = None
                 if self.allocentric_mode and self.target_obstacle is not None:
                     obstacle_key = f"obstacle{self.target_obstacle}"
@@ -607,7 +534,6 @@ class IsovistPathVisualizer:
                     path_id=current_path_id
                 )
                 
-                # Save files
                 base_filename = f"{current_path_id}_point_{idx:03d}"
                 
                 if format in ['svg', 'both']:
@@ -618,20 +544,17 @@ class IsovistPathVisualizer:
                     print(f"✓ SVG", end="")
                 
                 if format in ['png', 'both']:
-                    # Convert to PNG using cairosvg
                     try:
                         import cairosvg
                         svg_path = os.path.join(output_dir, f"{base_filename}.svg")
                         png_path = os.path.join(output_dir, f"{base_filename}.png")
                         
                         if format == 'both':
-                            # SVG already saved, just convert
                             cairosvg.svg2png(url=svg_path, write_to=png_path, dpi=150)
                         else:
-                            # Save SVG temporarily then convert
                             dwg.saveas(svg_path)
                             cairosvg.svg2png(url=svg_path, write_to=png_path, dpi=150)
-                            os.remove(svg_path)  # Remove temporary SVG
+                            os.remove(svg_path) 
                         
                         generated_files.append(png_path)
                         print(f" + PNG", end="")
@@ -643,7 +566,7 @@ class IsovistPathVisualizer:
                             dwg.saveas(svg_path)
                             generated_files.append(svg_path)
                 
-                print()  # New line
+                print()  
             
             print(f"✓ Completed path '{current_path_id}'")
         
@@ -688,7 +611,6 @@ Examples:
     elif args.obstacle_index is not None:
         parser.error("Obstacle index can only be specified in allocentric mode (use -a flag)")
 
-    # Validate input files
     if not os.path.exists(args.floorplan):
         print(f"Error: Floorplan file not found: {args.floorplan}")
         sys.exit(1)
@@ -697,14 +619,12 @@ Examples:
         print(f"Error: Paths file not found: {args.paths}")
         sys.exit(1)
     
-    # Load visibility values if in allocentric mode
     visibility_data = None
     target_obstacle = None
     if args.allocentric:
         with open(args.allocentric, 'r') as f:
             visibility_values = json.load(f)
         
-        # Map obstacle index to JSON key
         obstacle_key = f"obstacle{args.obstacle_index}"
         
         if obstacle_key not in visibility_values:
@@ -716,10 +636,8 @@ Examples:
         target_obstacle = args.obstacle_index
         print(f"Allocentric mode enabled: Target obstacle {args.obstacle_index} (visibility: {visibility_values[obstacle_key]['visibility']})")
 
-    # Create visualizer
     visualizer = IsovistPathVisualizer(args.floorplan, args.paths)
-
-    # Generate sequence
+    
     files = visualizer.generate_sequence(
         path_id=args.path_id,
         output_dir=args.output_dir,
