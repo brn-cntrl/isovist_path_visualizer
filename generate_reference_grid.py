@@ -162,6 +162,36 @@ def generate_reference_grid(geojson_path: str, output_path: str,
                 'stroke': '#333333',
                 'stroke-width': '2'
             })
+            
+            obstacle_id = feature['properties']['id']
+            
+            svg_coords = [(x, height - y) for x, y in coords]
+            min_x = min(x for x, y in svg_coords)
+            min_svg_y = min(y for x, y in svg_coords)
+            
+            label_x = min_x + 3
+            label_y = min_svg_y + 10
+            
+            SubElement(floorplan_group, 'rect', {
+                'x': str(label_x - 2),
+                'y': str(label_y - 9),
+                'width': '14',
+                'height': '11',
+                'fill': 'white',
+                'opacity': '0.8',
+                'stroke': 'none'
+            })
+            
+            text = SubElement(floorplan_group, 'text', {
+                'x': str(label_x),
+                'y': str(label_y),
+                'font-size': '9',
+                'font-family': 'monospace',
+                'font-weight': 'bold',
+                'fill': '#000000',
+                'text-anchor': 'start'
+            })
+            text.text = str(obstacle_id)
     
     tree = ElementTree(svg)
     tree.write(output_path, encoding='utf-8', xml_declaration=True)

@@ -80,10 +80,41 @@ class IsovistPathVisualizer:
         
         # Extract obstacles from floorplan
         self.obstacles = self._extract_obstacles()
-        
+
+        print("\nDiagnostic - Polygon winding order:")
+        for i, obs in enumerate(self.obstacles):
+            obs_cartesian = [(x, self.height - y) for x, y in obs]
+            winding = self._check_polygon_winding(obs_cartesian)
+            print(f"  Obstacle {i}: {winding} ({len(obs)} points)")
+
+        # Merge obstacles too close to boundaries
+        self.obstacles = self._merge_boundary_adjacent_obstacles(tolerance=2.0)
+
         print(f"✓ Loaded floorplan: {self.width:.1f} x {self.height:.1f}")
         print(f"✓ Obstacles: {len(self.obstacles)}")
+
+        self.boundary_diagonal = self._calculate_boundary_diagonal()
+        print(f"✓ Boundary diagonal: {self.boundary_diagonal:.1f}px")
+
+        # Initialize allocentric mode parameters (will be set by generate_sequence)
+        self.allocentric_mode = False
+        self.visibility_data = None
+        self.target_obstacle = None
     
+    def _check_polygon_winding(self, points: List[Tuple[float, float]]) -> str:
+        """
+        Check if polygon has clockwise or counter-clockwise winding
+        Returns: 'cw' for clockwise, 'ccw' for counter-clockwise
+        """
+        # Calculate signed area
+        area = 0.0
+        for i in range(len(points)):
+            j = (i + 1) % len(points)
+            area += points[i][0] * points[j][1]
+            area -= points[j][0] * points[i][1]
+        
+        return 'ccw' if area > 0 else 'cw'
+
     def _load_json(self, filepath: str) -> dict:
         """Load and parse JSON file"""
         with open(filepath, 'r') as f:
@@ -144,12 +175,199 @@ class IsovistPathVisualizer:
             print(f"  {str(e)}")
             raise RuntimeError(f"Visibility computation failed: {e}")
     
+    def _compute_allocentric_visibility(
+        self,
+        obstacle_index: int,
+        visibility_value: float
+    ) -> List[Tuple[float, float]]:
+        """
+        Compute allocentric visibility from obstacle center with radius clipping
+        
+        Args:
+            obstacle_index: Index of the obstacle (1-based matching JSON keys)
+            visibility_value: Normalized visibility value (0-1)
+            
+        Returns:
+            List of (x, y) points defining clipped visibility polygon in SVG coordinates
+        """
+        try:
+            # Get the obstacle polygon (stored in SVG coordinates)
+            obstacle_svg = self.obstacles[obstacle_index]
+            
+            # Convert from SVG to Cartesian coordinates
+            obstacle_cartesian = [(x, self.height - y) for x, y in obstacle_svg]
+            
+            # Calculate obstacle center (in Cartesian coordinates)
+            # Exclude duplicate closing point if present
+            points_to_average = obstacle_cartesian
+            if len(obstacle_cartesian) > 1:
+                first = obstacle_cartesian[0]
+                last = obstacle_cartesian[-1]
+                if abs(first[0] - last[0]) < 0.01 and abs(first[1] - last[1]) < 0.01:
+                    points_to_average = obstacle_cartesian[:-1]
+            
+            center_x = sum(x for x, y in points_to_average) / len(points_to_average)
+            center_y = sum(y for x, y in points_to_average) / len(points_to_average)
+            
+            print(f"  Allocentric center (Cartesian): ({center_x:.1f}, {center_y:.1f})")
+            
+            # Create Point for the center
+            pov = self.vis_module.module.Point(float(center_x), float(center_y))
+            
+            # Create obstacle polygons EXCLUDING the target obstacle
+            # Need to convert from SVG to Cartesian for C++ module
+            obstacle_list = []
+            for i, obstacle_points in enumerate(self.obstacles):
+                if i == obstacle_index:
+                    print(f"  Excluding obstacle {i} from allocentric computation")
+                    continue  # Skip the target obstacle
+                    
+                poly = self.vis_module.module.Polygon2()
+                # Convert back from SVG to Cartesian for C++ module
+                for x, svg_y in obstacle_points:
+                    cartesian_y = self.height - svg_y
+                    poly.add_vertex(float(x), float(cartesian_y))
+                obstacle_list.append(poly)
+            
+            print(f"  Computing with {len(obstacle_list)} obstacles (excluded obstacle {obstacle_index})")
+            
+            # Compute visibility polygon (returns Point objects)
+            visibility_points = self.vis_module.module.compute_visibility_polygon(
+                pov,
+                obstacle_list,
+                int(self.width),
+                int(self.height),
+                3000.0  # ray_length
+            )
+            
+            print(f"  Unclipped allocentric polygon: {len(visibility_points)} points")
+            
+            # Calculate radius: 0 = 0, 1 = boundary diagonal
+            radius = visibility_value * self.boundary_diagonal
+            
+            print(f"  Visibility value: {visibility_value:.2f}")
+            print(f"  Boundary diagonal: {self.boundary_diagonal:.1f}px")
+            print(f"  Clipping radius: {radius:.1f}px")
+            
+            # Clip with circle using Clipper2
+            # Pass Point objects (not tuples!)
+            clipped_points = self.vis_module.module.clip_circle_with_visibility_polygon(
+                visibility_points,  # Point objects from compute_visibility_polygon
+                pov,                # Point object for center
+                float(radius),
+                128  # circle segments for smooth clipping
+            )
+            
+            print(f"  Clipped allocentric polygon: {len(clipped_points)} points")
+            
+            if len(clipped_points) == 0:
+                print(f"  ✗ WARNING: Clipping returned empty polygon!")
+                return []
+            
+            # Convert from Cartesian to SVG coordinates
+            result = [(p.x, self.height - p.y) for p in clipped_points]
+            
+            print(f"  ✓ Allocentric visibility computed successfully")
+            
+            return result
+            
+        except Exception as e:
+            print(f"\n✗ Error computing allocentric visibility:")
+            print(f"  {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return []
+    
+    def _merge_boundary_adjacent_obstacles(self, tolerance: float = 2.0) -> List[List[Tuple[float, float]]]:
+        """
+        Merge obstacles that are within tolerance distance of the boundary
+        
+        Args:
+            tolerance: Maximum distance (in pixels) to consider "adjacent to boundary"
+        
+        Returns:
+            Modified list of obstacles with boundary-adjacent ones merged
+        """
+        if len(self.obstacles) < 2:
+            return self.obstacles
+        
+        boundary = self.obstacles[0]
+        boundary_cartesian = [(x, self.height - y) for x, y in boundary]
+        
+        # Get boundary extents
+        min_x = min(x for x, y in boundary_cartesian)
+        max_x = max(x for x, y in boundary_cartesian)
+        min_y = min(y for x, y in boundary_cartesian)
+        max_y = max(y for x, y in boundary_cartesian)
+        
+        modified_obstacles = [boundary]  # Keep original boundary
+        
+        for i, obstacle in enumerate(self.obstacles[1:], start=1):
+            obstacle_cartesian = [(x, self.height - y) for x, y in obstacle]
+            
+            # Check if any vertex is too close to boundary edges
+            too_close = False
+            for x, y in obstacle_cartesian:
+                if (abs(x - min_x) < tolerance or abs(x - max_x) < tolerance or
+                    abs(y - min_y) < tolerance or abs(y - max_y) < tolerance):
+                    too_close = True
+                    print(f"  WARNING: Obstacle {i} is within {tolerance}px of boundary - adjusting")
+                    break
+            
+            if too_close:
+                # Adjust obstacle vertices to be exactly on boundary or further away
+                adjusted = []
+                for x, y in obstacle_cartesian:
+                    new_x = x
+                    new_y = y
+                    
+                    # Snap to boundary if within tolerance
+                    if abs(x - min_x) < tolerance:
+                        new_x = min_x
+                    if abs(x - max_x) < tolerance:
+                        new_x = max_x
+                    if abs(y - min_y) < tolerance:
+                        new_y = min_y
+                    if abs(y - max_y) < tolerance:
+                        new_y = max_y
+                    
+                    adjusted.append((new_x, new_y))
+                
+                # Convert back to SVG
+                adjusted_svg = [(x, self.height - y) for x, y in adjusted]
+                modified_obstacles.append(adjusted_svg)
+            else:
+                modified_obstacles.append(obstacle)
+        
+        return modified_obstacles
+
+    def _calculate_boundary_diagonal(self) -> float:
+        """Calculate the diagonal of the boundary polygon (first obstacle)"""
+        if not self.obstacles or len(self.obstacles) < 1:
+            return 1000.0  # Default fallback
+        
+        boundary = self.obstacles[0]
+        
+        # Find min/max coordinates
+        min_x = min(x for x, y in boundary)
+        max_x = max(x for x, y in boundary)
+        min_y = min(y for x, y in boundary)
+        max_y = max(y for x, y in boundary)
+        
+        # Calculate diagonal
+        width = max_x - min_x
+        height = max_y - min_y
+        diagonal = (width**2 + height**2)**0.5
+        
+        return diagonal
+
     def _create_svg(self, 
-                    viewpoint: Tuple[float, float],
-                    path_coords: List[Tuple[float, float]],
-                    current_point_idx: int,
-                    visibility_polygon: List[Tuple[float, float]],
-                    path_id: str) -> svgwrite.Drawing:
+                viewpoint: Tuple[float, float],
+                path_coords: List[Tuple[float, float]],
+                current_point_idx: int,
+                visibility_polygon: List[Tuple[float, float]],
+                allocentric_polygon: Optional[List[Tuple[float, float]]],
+                path_id: str) -> svgwrite.Drawing:
         """
         Create SVG drawing with floorplan, path, and isovist
         
@@ -199,13 +417,52 @@ class IsovistPathVisualizer:
                     stroke_width=2
                 ))
         
-        # Draw visibility polygon (isovist)
+        # Draw allocentric visibility polygon FIRST (if in allocentric mode)
+        # This is the clipped isovist from the obstacle center
+        if allocentric_polygon and len(allocentric_polygon) > 0:
+            dwg.add(dwg.polygon(
+                points=allocentric_polygon,
+                fill='rgb(150, 150, 150)',  # Medium gray fill
+                fill_opacity=0.5,
+                stroke='rgb(100, 100, 100)',  # Darker gray stroke
+                stroke_opacity=0.8,
+                stroke_width=2
+            ))
+            
+            # Draw obstacle center indicator
+            obstacle_svg = self.obstacles[self.target_obstacle]
+            # Convert to Cartesian for center calculation
+            obstacle_cartesian = [(x, self.height - y) for x, y in obstacle_svg]
+            points_to_average = obstacle_cartesian
+            if len(obstacle_cartesian) > 1:
+                first = obstacle_cartesian[0]
+                last = obstacle_cartesian[-1]
+                if abs(first[0] - last[0]) < 0.01 and abs(first[1] - last[1]) < 0.01:
+                    points_to_average = obstacle_cartesian[:-1]
+            
+            center_x = sum(x for x, y in points_to_average) / len(points_to_average)
+            center_y = sum(y for x, y in points_to_average) / len(points_to_average)
+            # Convert center back to SVG for drawing
+            center_svg_x = center_x
+            center_svg_y = self.height - center_y
+            
+            # Draw obstacle center marker
+            dwg.add(dwg.circle(
+                center=(center_svg_x, center_svg_y),
+                r=6,
+                fill='#000000',
+                stroke='white',
+                stroke_width=2
+            ))
+
+        # Draw visibility polygon (isovist from path POV)
+        # This is the unclipped isovist from the current viewpoint
         if visibility_polygon:
             dwg.add(dwg.polygon(
                 points=visibility_polygon,
-                fill='rgb(200, 200, 200)',
+                fill='rgb(200, 200, 200)',  # Light gray fill
                 fill_opacity=0.4,
-                stroke='rgb(150, 150, 150)',
+                stroke='rgb(150, 150, 150)',  # Medium gray stroke
                 stroke_opacity=0.8,
                 stroke_width=2
             ))
@@ -276,9 +533,12 @@ class IsovistPathVisualizer:
         return dwg
     
     def generate_sequence(self, 
-                         path_id: Optional[str] = None,
-                         output_dir: str = "./output",
-                         format: str = "svg") -> List[str]:
+                     path_id: Optional[str] = None,
+                     output_dir: str = "./output",
+                     format: str = "svg",
+                     allocentric_mode: bool = False,
+                     visibility_data: Optional[Dict] = None,
+                     target_obstacle: Optional[int] = None) -> List[str]:
         """
         Generate visualization sequence for a path
         
@@ -290,12 +550,21 @@ class IsovistPathVisualizer:
         Returns:
             List of generated file paths
         """
-        # Create output directory
+
+        # Update allocentric mode parameters
+        self.allocentric_mode = allocentric_mode
+        self.visibility_data = visibility_data
+        self.target_obstacle = target_obstacle
+
+        if self.allocentric_mode:
+            obstacle_key = f"obstacle{target_obstacle}"
+            vis_value = visibility_data[obstacle_key]['visibility']
+            print(f"✓ Allocentric mode: Obstacle {target_obstacle}, Visibility: {vis_value:.2f}")
+
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         
         generated_files = []
         
-        # Get paths to process
         features = self.paths_data.get('features', [])
         if path_id:
             features = [f for f in features if f['properties']['id'] == path_id]
@@ -303,7 +572,6 @@ class IsovistPathVisualizer:
                 print(f"Error: Path '{path_id}' not found")
                 return []
         
-        # Process each path
         for feature in features:
             props = feature['properties']
             current_path_id = props['id']
@@ -317,15 +585,25 @@ class IsovistPathVisualizer:
                 
                 print(f"  Point {idx + 1}/{len(coords)}: ({x:.1f}, {y:.1f})...", end=" ")
                 
-                # Compute visibility polygon
+                # Compute visibility polygon from path POV
                 visibility = self._compute_visibility(viewpoint)
                 
-                # Create SVG
+                # Compute allocentric visibility if in allocentric mode
+                allocentric_visibility = None
+                if self.allocentric_mode and self.target_obstacle is not None:
+                    obstacle_key = f"obstacle{self.target_obstacle}"
+                    vis_value = self.visibility_data[obstacle_key]['visibility']
+                    allocentric_visibility = self._compute_allocentric_visibility(
+                        self.target_obstacle,
+                        vis_value
+                    )
+                
                 dwg = self._create_svg(
                     viewpoint=viewpoint,
                     path_coords=coords,
                     current_point_idx=idx,
                     visibility_polygon=visibility,
+                    allocentric_polygon=allocentric_visibility,
                     path_id=current_path_id
                 )
                 
@@ -391,13 +669,25 @@ Examples:
     
     parser.add_argument('floorplan', help='Floorplan GeoJSON file')
     parser.add_argument('paths', help='Paths JSON file')
+    parser.add_argument('-a', '--allocentric', metavar='VISIBILITY_VALUES',
+                    help='Enable allocentric mode with visibility values JSON file')
+    parser.add_argument('-o', '--obstacle', type=int, dest='obstacle_index',
+                    help='Obstacle index (required in allocentric mode)')
     parser.add_argument('--path-id', help='Specific path ID to visualize (default: all paths)')
     parser.add_argument('--output-dir', default='./output', help='Output directory (default: ./output)')
     parser.add_argument('--format', choices=['svg', 'png', 'both'], default='svg',
-                       help='Output format (default: svg)')
+                    help='Output format (default: svg)')
     
     args = parser.parse_args()
     
+    if args.allocentric:
+        if args.obstacle_index is None:
+            parser.error("Obstacle index is required when using allocentric mode (-a)")
+        if not os.path.exists(args.allocentric):
+            parser.error(f"Visibility values file not found: {args.allocentric}")
+    elif args.obstacle_index is not None:
+        parser.error("Obstacle index can only be specified in allocentric mode (use -a flag)")
+
     # Validate input files
     if not os.path.exists(args.floorplan):
         print(f"Error: Floorplan file not found: {args.floorplan}")
@@ -407,14 +697,36 @@ Examples:
         print(f"Error: Paths file not found: {args.paths}")
         sys.exit(1)
     
+    # Load visibility values if in allocentric mode
+    visibility_data = None
+    target_obstacle = None
+    if args.allocentric:
+        with open(args.allocentric, 'r') as f:
+            visibility_values = json.load(f)
+        
+        # Map obstacle index to JSON key
+        obstacle_key = f"obstacle{args.obstacle_index}"
+        
+        if obstacle_key not in visibility_values:
+            print(f"Error: {obstacle_key} not found in visibility values file")
+            print(f"Available obstacles: {', '.join(visibility_values.keys())}")
+            sys.exit(1)
+        
+        visibility_data = visibility_values
+        target_obstacle = args.obstacle_index
+        print(f"Allocentric mode enabled: Target obstacle {args.obstacle_index} (visibility: {visibility_values[obstacle_key]['visibility']})")
+
     # Create visualizer
     visualizer = IsovistPathVisualizer(args.floorplan, args.paths)
-    
+
     # Generate sequence
     files = visualizer.generate_sequence(
         path_id=args.path_id,
         output_dir=args.output_dir,
-        format=args.format
+        format=args.format,
+        allocentric_mode=args.allocentric is not None,
+        visibility_data=visibility_data,
+        target_obstacle=target_obstacle
     )
     
     print(f"\n{'='*60}")
