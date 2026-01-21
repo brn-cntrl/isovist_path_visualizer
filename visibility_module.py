@@ -11,7 +11,6 @@ class VisibilityModule:
     def _load_module(self):
         """Load the pybind11 compiled module"""
         try:
-            # Add current directory to path if not already there
             current_dir = os.path.dirname(os.path.abspath(__file__))
             if current_dir not in sys.path:
                 sys.path.insert(0, current_dir)
@@ -62,10 +61,8 @@ class VisibilityModule:
             raise RuntimeError("Visibility module not loaded")
         
         try:
-            # Create Point for viewpoint
             pov = self.module.Point(float(viewpoint[0]), float(viewpoint[1]))
             
-            # Create obstacle polygons
             obstacle_list = []
             for obstacle_points in obstacles:
                 poly = self.module.Polygon2()
@@ -76,7 +73,6 @@ class VisibilityModule:
             
             print(f"Computing visibility from ({viewpoint[0]:.1f}, {viewpoint[1]:.1f}) with {len(obstacle_list)} obstacles")
             
-            # Compute visibility polygon
             result = self.module.compute_visibility_polygon(
                 pov,
                 obstacle_list,
@@ -85,7 +81,6 @@ class VisibilityModule:
                 float(ray_length)
             )
             
-            # Convert result to list of tuples
             points = [(point.x, point.y) for point in result]
             print(f"✓ Computed visibility polygon with {len(points)} points")
             
@@ -98,7 +93,6 @@ class VisibilityModule:
             print(f"Error computing visibility: {traceback.format_exc()}")
             raise RuntimeError(f"Error computing visibility polygon: {e}")
 
-# Create singleton instance
 _visibility_module = None
 
 def get_visibility_module():
