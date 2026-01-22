@@ -11,12 +11,34 @@ class VisibilityModule:
     def _load_module(self):
         """Load the pybind11 compiled module"""
         try:
+            import platform
+            
             current_dir = os.path.dirname(os.path.abspath(__file__))
             if current_dir not in sys.path:
                 sys.path.insert(0, current_dir)
             
-            # Python will automatically find visibility_polygon.cpython-311-darwin.so
-            # when we import visibility_polygon
+            # Detect OS and determine expected file extension
+            system = platform.system()
+            python_version = f"{sys.version_info.major}{sys.version_info.minor}"
+            
+            if system == "Windows":
+                expected_ext = ".pyd"
+                expected_pattern = f"visibility_polygon.cp{python_version}-win_amd64.pyd"
+            elif system == "Darwin":
+                expected_ext = ".so"
+                expected_pattern = f"visibility_polygon.cpython-{python_version}-darwin.so"
+            elif system == "Linux":
+                expected_ext = ".so"
+                expected_pattern = f"visibility_polygon.cpython-{python_version}-x86_64-linux-gnu.so"
+            else:
+                expected_ext = ".so"
+                expected_pattern = f"visibility_polygon.cpython-{python_version}-*.so"
+            
+            print(f"  Detecting OS: {system}")
+            print(f"  Python version: {python_version}")
+            print(f"  Looking for: {expected_pattern}")
+            
+            # Python will automatically find the correct binary when we import
             import visibility_polygon
             self.module = visibility_polygon
             print("✓ Visibility polygon module loaded successfully")
@@ -25,14 +47,24 @@ class VisibilityModule:
             current_dir = os.path.dirname(os.path.abspath(__file__))
             print(f"✗ Failed to import visibility_polygon module: {e}")
             print(f"  Current directory: {current_dir}")
-            print(f"  Looking for: visibility_polygon.cpython-*.so or visibility_polygon.so")
+            print(f"  Expected file: {expected_pattern}")
             
-            # List .so files in directory for debugging
-            so_files = [f for f in os.listdir(current_dir) if f.endswith('.so')]
-            if so_files:
-                print(f"  Found .so files: {so_files}")
+            # List binary files in directory for debugging
+            if system == "Windows":
+                binary_files = [f for f in os.listdir(current_dir) if f.endswith('.pyd')]
+                print(f"  Looking for .pyd files")
             else:
-                print(f"  No .so files found in {current_dir}")
+                binary_files = [f for f in os.listdir(current_dir) if f.endswith('.so')]
+                print(f"  Looking for .so files")
+            
+            if binary_files:
+                print(f"  Found binary files: {binary_files}")
+            else:
+                print(f"  No binary files found in {current_dir}")
+            
+            print(f"\n  Please ensure you have the compiled module:")
+            print(f"  - Expected: {expected_pattern}")
+            print(f"  - Location: {current_dir}")
             
             raise RuntimeError(f"Failed to load visibility_polygon module: {e}")
     
